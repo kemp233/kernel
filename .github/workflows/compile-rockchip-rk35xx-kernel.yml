@@ -212,46 +212,35 @@ jobs:
           enable_log: true
           docker_hostpath: /builder
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
-
-      - name: 📊 完整输出 (探针 + 考古审计)
+      - name: 📊 审计 (探针 + 考古)
         if: always()
         shell: bash
         run: |
           kill ${PROBE_PID} 2>/dev/null || true; sleep 2
-          echo "### 探针：实时文件欧" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat /trace_dtb.log 2>/dev/null || echo "(无数据)" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 📡 探针事件" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          sort /tmp/trace_dtb.log 2>/dev/null | head -200 >> $GITHUB_STEP_SUMMARY || echo "  无数据" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
 
-          echo "### 考古：lb2004 所有物理实体" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          find /builder -iname "*lb2004" 2>/dev/null | while read f; do
-            echo "$(stat -c '%sB %a %n' "$f" 2>/dev/null) $f" >> $GITHUB_STEP_SUMMARY
-          done || echo '无 lb2004 文件' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 lb2004 文件" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          find /builder -iname "*lb2004*" 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
 
-          echo "### 考古：h96max-v56 参考实体" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          find /builder -iname "*h96max*" 2>/dev/null | while read f; do
-            echo "$(stat -c '%sB %a %n' "$f" 2>/dev/null) $f" >> $GITHUB_STEP_SUMMARY
-          done
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 h96max-v56 参考" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          find /builder -iname "*h96max*" 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
 
-          echo "### Makefile 注入验证" >> $GITHUB_STEP_SUMMARY
-          for m in $(find /builder -name "Makefile" -path "*/dts/rockchip/" 2>/dev/null); do
-            if grep -q "lb2004" "$m"; then
-              echo "- ✅ lb2004 条目存在于 \`$m\`" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "- ❌ 无 lb2004 条目于 \`$m\`" >> $GITHUB_STEP_SUMMARY
-            fi
+          echo "### 📝 Makefile" >> $GITHUB_STEP_SUMMARY
+          for m in $(find /builder -name "Makefile" -path "*/dts/rockchip/*" 2>/dev/null); do
+            grep -q lb2004 "$m" && echo "- ✅ \`$m\`" >> $GITHUB_STEP_SUMMARY || echo "- ❌ \`$m\`" >> $GITHUB_STEP_SUMMARY
           done
 
-          echo "### 编译日志 b2004" >> $GITHUB_STEP_SUMMARY
-          find /builder -name "*.log" -exec grep -iC 5 "lb2004" {} + 2>/dev/null | head -500 >> $GITHUB_STEP_SUMMARY || echo '无 b2004 日志'
-
-          echo '###.summary R ch 2004 总计' >> $GITHUB_STEP_SUMMARY
-          lb2004_count=$(find /builder -iname '*lb2004*' 2>/dev/null | wc -l)
-          echo "lb2004 文件数: $lb2004_count" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 日志" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          find /builder -name "*.log" -exec grep -i "lb2004" {} + 2>/dev/null | head -100 >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
