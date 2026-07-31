@@ -180,7 +180,22 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
+      - name: 📥 拉取 LB2004 引导程序 + model_database
+        shell: bash
+        run: |
+          echo "=== 从 kemp233/u-boot 拉取 lb2004 引导加载程序 ==="
+          mkdir -p lr2004-boot
+          curl -fsSL -o lb2004-boot/idbloader.img \
+            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/idbloader.img"
+          curl -fsSL -o lb2004-boot/u-boot.itb \
+            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/u-boot.itb"
+          ls -lh lb2004-boot/
 
+          echo "=== 拉取 model_database.conf (含 lb2004 RK3566 条目) ==="
+          curl -fsSL -o model_database.conf \
+            "https://raw.cos.ap-beijing.myqcloud.com/kemp233/amlogic-s9xxx-armbian/main/build-armbian/armbian-files/common-files/etc/model_database.conf"
+          grep "lb2004" model_database.conf || echo "⚠️ lb2004 未在 model_database.conf 中找到!"
+          echo "model_database.conf: $(wc -l < model_database.conf) 行"
 
 
       - name: 🔍 LB2004 后台探针 (硬链接抢救 + 编译产物追踪)
