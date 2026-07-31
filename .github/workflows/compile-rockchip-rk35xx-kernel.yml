@@ -38,11 +38,11 @@ on:
       kernel_package:
         description: "Select compile package list"
         required: false
-        default: "all"
+        default: "dtbs"
         type: choice
         options:
-          - all
           - dtbs
+          - all
       kernel_toolchain:
         description: "Select the compilation toolchain"
         required: false
@@ -244,7 +244,7 @@ jobs:
           docker_hostpath: /builder
           delete_source: false
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
-          kernel_package: dtbs
+          kernel_package: ${{ inputs.kernel_package }}
 
       - name: 📊 LB2004 编译审计报告
         if: always()
