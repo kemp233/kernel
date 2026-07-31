@@ -180,57 +180,62 @@ jobs:
 
 
 
-      - name: 🛡️ 启动硬链接抢救员 (全速锁定产物)
+      - name: 🔍 后台探针 + 硬链接抢救员 (锁定 h96max-v56)
         shell: bash
         run: |
           RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
           mkdir -p "$RESCUE_DIR"
           TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
-          echo "==== 抢救员启动记录 $(date) ====" > "$TRACE_LOG"
-          
+          H96MAX_LOG="${{ github.workspace }}/h96max_dtc.log"
+          echo "==== 探针 + 抢救员启动 $(date) ====" > "$TRACE_LOG"
+          echo "=== h96max-v56 DTC 编译命令行输出 ===" > "$H96MAX_LOG"
+
           (
             while true; do
-              # 使用 ln (硬链接) 瞬发锁定，即使原文件被 rm -rf，数据依然保留在 RESCUE_ZONE
+              # 硬链接抢救 .dtb 文件
               find /builder -type f \( -name "*.dtb" -o -name "*lb2004*" -o -name "*h96max*" \) 2>/dev/null | while read f; do
                 f_identity=$(echo "$f" | md5sum | cut -c1-8)
                 f_name=$(basename "$f")
                 target_path="$RESCUE_DIR/${f_identity}_${f_name}"
-                
                 if [ ! -f "$target_path" ]; then
                   if ln "$f" "$target_path" 2>/dev/null; then
-                    echo "[$(date +%T)] 🔒 成功锁死产物: $f" >> "$TRACE_LOG"
+                    echo "[$(date +%T)] 🔒 锁死产物: $f" >> "$TRACE_LOG"
                   fi
                 fi
               done
-              sleep 0.5 
+              # 抓取 h96max-v56 的 .cmd 文件 (容器内)
+              DID=$(docker ps -q --filter "name=armbian-ophub" 2>/dev/null)
+              if [ -n "$DID" ]; then
+                docker exec $DID bash -c 'find /opt/kernel/ -name "*.cmd" -path "*h96max*" 2>/dev/null' | while read cmd_f; do
+                  fname=$(basename "$cmd_f")
+                  docker cp ${DID}:"$cmd_f" "$RESCUE_DIR/${fname}" 2>/dev/null && \
+                    echo "[$(date +%T)] 🔧 抓取.cmd: $fname" >> "$TRACE_LOG"
+                done
+              fi
+              sleep 0.5
             done
           ) &
           echo "RESCUE_PID=$!" >> $GITHUB_ENV
 
-      - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
+      - name: Compile the kernel [${{ inputs.kernel_version }}]
         uses: ophub/amlogic-s9xxx-armbian@main
+        id: compile
         if: ${{ !cancelled() }}
         env:
-          # --- 关键：强制干扰 ophub 内部脚本的清理逻辑 ---
-          DEBUG: "1"           # 开启调试模式，许多脚本检测到 DEBUG=1 会跳过清理
-          KEEP_SOURCE: "true"  # 强制保留源码
-          CLEANUP: "false"     # 显式禁用清理函数
+          DEBUG: "1"            # set -x
+          V: "1"                # kernel Makefile verbose
+          VERBOSE: "yes"         # Armbian script verbose
         with:
           build_target: "kernel"
           kernel_source: ${{ inputs.kernel_source }}
           kernel_version: ${{ inputs.kernel_version }}
-          kernel_auto: ${{ inputs.kernel_auto }}
-          kernel_package: ${{ inputs.kernel_package }}
-          kernel_toolchain: ${{ inputs.kernel_toolchain }}
-          kernel_sign: ${{ inputs.kernel_sign }}
-          kernel_config: ${{ inputs.kernel_config }}
-          ccache_clear: ${{ inputs.ccache_clear }}
           auto_patch: true
           kernel_patch: kernel-patch/beta
           enable_log: true
           docker_hostpath: /builder
-          delete_source: false # 配合 env 实现双重保留
+          delete_source: false
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
+
 
       - name: 🚑 容器内物理搜救 (趁尸体还热)
         if: always()
@@ -275,6 +280,20 @@ jobs:
           echo "### 🔍 宿主机物理残留审计" >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
           sudo find /builder -iname "*lb2004*" -o -iname "*h96max*" 2>/dev/null || echo "宿主机路径已被彻底清空" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "### 🎯 h96max-v56 DTC 编译指令 (.cmd)" >> $GITHUB_STEP_SUMMARY
+          for cmdfile in ${{ github.workspace }}/RESCUE_ZONE/*.cmd; do
+            [ -f "$cmdfile" ] || continue
+            echo "**$(basename $cmdfile):**" >> $GITHUB_STEP_SUMMARY
+            echo '```shell' >> $GITHUB_STEP_SUMMARY
+            cat "$cmdfile" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "### DTC 编译日志 (h96max_dtc.log)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat "${{ github.workspace }}/h96max_dtc.log" 2>/dev/null || echo "无 DTC 日志" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
