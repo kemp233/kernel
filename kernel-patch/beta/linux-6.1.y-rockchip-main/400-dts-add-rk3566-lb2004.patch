@@ -3,10 +3,19 @@ From: kemp233 <kemp233@users.noreply.github.com>
 Date: Thu, 31 Jul 2026 08:00:00 +0000
 Subject: [PATCH] arm64: dts: rockchip: add rk3566-lb2004 board
 
-Add device tree for RK3566 LB2004 board (BSP kernel).
+Add device tree for RK3566 LB2004 board (BSP kernel unifreq/linux-6.1.y-rockchip).
 
 Signed-off-by: kemp233 <kemp233@users.noreply.github.com>
 ---
+--- a/arch/arm64/boot/dts/rockchip/Makefile
++++ b/arch/arm64/boot/dts/rockchip/Makefile
+@@ -195,7 +195,8 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-jp-tvbox.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-orangepi-3b.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-orangepi-3b-v1.1.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-orangepi-3b-v2.1.dtb
++dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-panther-x2.dtb
+
 --- /dev/null
 +++ b/arch/arm64/boot/dts/rockchip/rk3566-lb2004.dts
 @@ -0,0 +1,732 @@
