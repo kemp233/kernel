@@ -180,36 +180,27 @@ jobs:
 
 
 
-      - name: 🔍 后台探针 + 硬链接抢救员 (锁定 h96max-v56)
+      - name: 🔍 LB2004 后台探针 (硬链接抢救 + 编译产物追踪)
         shell: bash
         run: |
           RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
           mkdir -p "$RESCUE_DIR"
           TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
-          H96MAX_LOG="${{ github.workspace }}/h96max_dtc.log"
-          echo "==== 探针 + 抢救员启动 $(date) ====" > "$TRACE_LOG"
-          echo "=== h96max-v56 DTC 编译命令行输出 ===" > "$H96MAX_LOG"
+          echo "=== LB2004 探针启动 $(date) ===" > "$TRACE_LOG"
 
           (
             while true; do
-              # 硬链接抢救 .dtb 文件
-              find /builder -type f \( -name "*.dtb" -o -name "*lb2004*" -o -name "*h96max*" \) 2>/dev/null | while read f; do
-                f_identity=$(echo "$f" | md5sum | cut -c1-8)
-                f_name=$(basename "$f")
-                target_path="$RESCUE_DIR/${f_identity}_${f_name}"
-                if [ ! -f "$target_path" ]; then
-                  if ln "$f" "$target_path" 2>/dev/null; then
-                    echo "[$(date +%T)] 🔒 锁死产物: $f" >> "$TRACE_LOG"
-                  fi
-                fi
+              find /builder -type f \( -name "*lb2004*" -o -name "*.dtb" \) 2>/dev/null | while read f; do
+                fid=$(echo "$f" | md5sum | cut -c1-8)
+                fn=$(basename "$f")
+                t="$RESCUE_DIR/${fid}_${fn}"
+                [ -f "$t" ] && continue
+                ln "$f" "$t" 2>/dev/null && echo "[$(date +%T)] 🔒 $fn" >> "$TRACE_LOG"
               done
-              # 抓取 h96max-v56 的 .cmd 文件 (容器内)
               DID=$(docker ps -q --filter "name=armbian-ophub" 2>/dev/null)
               if [ -n "$DID" ]; then
-                docker exec $DID bash -c 'find /opt/kernel/ -name "*.cmd" -path "*h96max*" 2>/dev/null' | while read cmd_f; do
-                  fname=$(basename "$cmd_f")
-                  docker cp ${DID}:"$cmd_f" "$RESCUE_DIR/${fname}" 2>/dev/null && \
-                    echo "[$(date +%T)] 🔧 抓取.cmd: $fname" >> "$TRACE_LOG"
+                docker exec $DID bash -c 'find /opt/kernel/ -type f \( -name "*lb2004*" -o -path "*/rockchip/*lb2004*" \) 2>/dev/null' | while read f; do
+                  docker cp ${DID}:"$f" "$RESCUE_DIR/$(basename "$f")" 2>/dev/null &&                     echo "[$(date +%T)] 📦 $(basename "$f")" >> "$TRACE_LOG"
                 done
               fi
               sleep 0.5
@@ -217,101 +208,47 @@ jobs:
           ) &
           echo "RESCUE_PID=$!" >> $GITHUB_ENV
 
-      - name: 📥 拉取 LB2004 引导程序 + model_database
-        shell: bash
-        run: |
-          echo "=== 从 kemp233/u-boot 获取 lb2004 引导加载程序 ==="
-          mkdir -p lb2004-boot
-          curl -fsSL -o lb2004-boot/idbloader.img \
-            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/idbloader.img"
-          curl -fsSL -o lb2004-boot/u-boot.itb \
-            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/u-boot.itb"
-          ls -lh lb2004-boot/
-
-          echo "=== 拉取 model_database.conf (含 lb2004 RK3566 条目) ==="
-          curl -fsSL -o model_database.conf \
-            "https://raw.githubusercontent.com/kemp233/amlogic-s9xxx-armbian/main/build-armbian/armbian-files/common-files/etc/model_database.conf"
-          grep "lb2004" model_database.conf || echo "⚠️ lb2004 未在 model_database.conf 中找到!"
-          echo "model_database.conf: $(wc -l < model_database.conf) 行"
-
-      - name: Compile the kernel [${{ inputs.kernel_version }}]
-        uses: ophub/amlogic-s9xxx-armbian@main
-        id: compile
-        if: ${{ !cancelled() }}
-        env:
-          DEBUG: "1"            # set -x
-          V: "1"                # kernel Makefile verbose
-          VERBOSE: "yes"         # Armbian script verbose
-        with:
-          build_target: "kernel"
-          kernel_source: ${{ inputs.kernel_source }}
-          kernel_version: ${{ inputs.kernel_version }}
-          auto_patch: true
-          kernel_patch: kernel-patch/beta
-          enable_log: true
-          docker_hostpath: /builder
-          delete_source: false
-          docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
-
-
-      - name: 🚑 容器内物理搜救 (趁尸体还热)
-        if: always()
-        run: |
-          echo "### 🚑 容器内部实时搜寻结果" >> $GITHUB_STEP_SUMMARY
-          DOCKER_NAME="armbian-ophub"
-          if docker ps -a --format '{{.Names}}' | grep -q "$DOCKER_NAME"; then
-            echo "发现残留容器 $DOCKER_NAME，执行深度扫描..."
-            # 直接在容器尚未销毁前把所有 dtb 捞出来
-            docker exec $DOCKER_NAME find /opt/kernel/compile-kernel/ -name "*.dtb" 2>/dev/null | while read line; do
-               fname=$(basename "$line")
-               docker cp ${DOCKER_NAME}:"$line" "${{ github.workspace }}/RESCUE_ZONE/docker_save_${fname}" 2>/dev/null
-               echo "- ✅ 成功从容器中救回: $fname" >> $GITHUB_STEP_SUMMARY
-            done
-          else
-            echo "❌ 容器已被 Action 脚本秒删，只能依赖宿主机抢救结果。" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: 📊 终极抢救与考古报告
+      - name: 📊 LB2004 编译审计报告
         if: always()
         shell: bash
         run: |
           [ -n "${RESCUE_PID}" ] && sudo kill ${RESCUE_PID} || true
-          
-          echo "### 🆘 成功从黑洞中抢下的产物" >> $GITHUB_STEP_SUMMARY
-          RESCUED_COUNT=$(ls ${{ github.workspace }}/RESCUE_ZONE | wc -l)
-          if [ "$RESCUED_COUNT" -gt 0 ]; then
-            echo "| 文件标识 | 状态 |" >> $GITHUB_STEP_SUMMARY
-            echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-            ls -lh ${{ github.workspace }}/RESCUE_ZONE | grep -v "total" | while read line; do
-              echo "| \`$line\` | 🟢 已锁定 |" >> $GITHUB_STEP_SUMMARY
-            done
+
+          echo "### 🎯 LB2004 编译结果" >> $GITHUB_STEP_SUMMARY
+          if ls "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" 2>/dev/null; then
+            echo "✅ **LB2004 DTB 编译成功！**" >> $GITHUB_STEP_SUMMARY
+            ls -lh "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ 失败：未能在清理前捕获到任何 lb2004 相关文件。" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **未找到 rk3566-lb2004.dtb**" >> $GITHUB_STEP_SUMMARY
           fi
 
-          echo "### 📜 抢救动作轨迹" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          cat "${{ github.workspace }}/rescue_trace.log" 2>/dev/null || echo "无轨迹数据" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 全部抢救产物" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
+          ls -lh "${{ github.workspace }}/RESCUE_ZONE/" >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "(无)" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
 
-          echo "### 🔍 宿主机物理残留审计" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          sudo find /builder -iname "*lb2004*" -o -iname "*h96max*" 2>/dev/null || echo "宿主机路径已被彻底清空" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 📜 探针轨迹" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
+          cat "${{ github.workspace }}/rescue_trace.log" 2>/dev/null || echo "(无轨迹)" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
 
-          echo "### 🎯 h96max-v56 DTC 编译指令 (.cmd)" >> $GITHUB_STEP_SUMMARY
-          for cmdfile in ${{ github.workspace }}/RESCUE_ZONE/*.cmd; do
+          echo "### 🔬 LB2004 编译细节 (.cmd)" >> $GITHUB_STEP_SUMMARY
+          for cmdfile in "${{ github.workspace }}/RESCUE_ZONE"/*lb2004*.cmd; do
             [ -f "$cmdfile" ] || continue
-            echo "**$(basename $cmdfile):**" >> $GITHUB_STEP_SUMMARY
-            echo '```shell' >> $GITHUB_STEP_SUMMARY
+            echo "**$(basename "$cmdfile"):**" >> $GITHUB_STEP_SUMMARY
+            echo '\`\`\`shell' >> $GITHUB_STEP_SUMMARY
             cat "$cmdfile" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
           done
 
-          echo "### DTC 编译日志 (h96max_dtc.log)" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          cat "${{ github.workspace }}/h96max_dtc.log" 2>/dev/null || echo "无 DTC 日志" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 宿主机残留" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
+          sudo find /builder -iname "*lb2004*" 2>/dev/null || echo "(无残留)" >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
+
+
+
+
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
         if: ${{ env.PACKAGED_STATUS == 'success' && !cancelled() }}
