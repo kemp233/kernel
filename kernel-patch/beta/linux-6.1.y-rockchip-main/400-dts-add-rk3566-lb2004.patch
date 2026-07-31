@@ -7,17 +7,6 @@ Add device tree for RK3566 LB2004 board (BSP kernel).
 
 Signed-off-by: kemp233 <kemp233@users.noreply.github.com>
 ---
-
---- a/arch/arm64/boot/dts/rockchip/Makefile
-+++ b/arch/arm64/boot/dts/rockchip/Makefile
-@@ -67,7 +67,8 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-ta-lubancat-2-v10.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-rock-3c.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-rock-pi-3c.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-blade.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-cm4.dtb
-+dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-model-a.dtb
-
 --- /dev/null
 +++ b/arch/arm64/boot/dts/rockchip/rk3566-lb2004.dts
 @@ -0,0 +1,732 @@

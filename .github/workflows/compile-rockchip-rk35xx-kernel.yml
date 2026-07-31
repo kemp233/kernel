@@ -200,6 +200,37 @@ jobs:
           docker_hostpath: /builder
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
 
+      - name: Inject LB2004 Makefile entry and rebuild dtb in Docker
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          DOCKER_NAME=armbian-ophub
+          if ! docker ps -q --filter "name=${DOCKER_NAME}" | grep -q .; then
+            echo "::warning::Docker not running, skipping lb2004 inject"
+            exit 0
+          fi
+          KERNEL_SRC=$(docker exec ${DOCKER_NAME} sh -c "ls -d /opt/kernel/compile-kernel/kernel/linux-* 2>/dev/null | head -1")
+          [ -z "${KERNEL_SRC}" ] && { echo "::warning::No kernel src, skipping"; exit 0; }
+          DTS_DIR="${KERNEL_SRC}/arch/arm64/boot/dts/rockchip"
+          # Add lb2004 to Makefile if not already there
+          docker exec ${DOCKER_NAME} sh -c "
+            cd ${DTS_DIR}
+            grep -q 'rk3566-lb2004.dtb' Makefile || \
+              sed -i '/soquartz/ a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb' Makefile
+            grep 'lb2004' Makefile
+          "
+          # Rebuild dtbs
+          docker exec ${DOCKER_NAME} sh -c "
+            export ARCH=arm64
+            export CROSS_COMPILE=aarch64-none-linux-gnu-
+            export PATH=/usr/local/toolchain/arm-gnu-toolchain-15.3.rel1-aarch64-aarch64-none-linux-gnu/bin:\$PATH
+            cd ${KERNEL_SRC}
+            make dtbs 2>&1 | tail -20
+          "
+          # Copy lb2004 dtb to output
+          docker cp ${DOCKER_NAME}:${KERNEL_SRC}/arch/arm64/boot/dts/rockchip/rk3566-lb2004.dtb \
+            /builder/compile-kernel/output/ 2>/dev/null && echo "lb2004 dtb copied" || echo "lb2004 dtb not found"
+
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
         if: ${{ env.PACKAGED_STATUS == 'success' && !cancelled() }}
