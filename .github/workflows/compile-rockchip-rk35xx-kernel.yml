@@ -211,6 +211,25 @@ jobs:
           ) &
           echo "RESCUE_PID=$!" >> $GITHUB_ENV
 
+      - name: Compile the kernel [${{ inputs.kernel_version }}]
+        uses: ophub/amlogic-s9xxx-armbian@main
+        id: compile
+        if: ${{ !cancelled() }}
+        env:
+          DEBUG: "1"
+          V: "1"
+          VERBOSE: "yes"
+        with:
+          build_target: "kernel"
+          kernel_source: ${{ inputs.kernel_source }}
+          kernel_version: ${{ inputs.kernel_version }}
+          auto_patch: true
+          kernel_patch: kernel-patch/beta
+          enable_log: true
+          docker_hostpath: /builder
+          delete_source: false
+          docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
+
       - name: 📊 LB2004 编译审计报告
         if: always()
         shell: bash
