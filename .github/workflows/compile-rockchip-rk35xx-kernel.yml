@@ -217,6 +217,23 @@ jobs:
           ) &
           echo "RESCUE_PID=$!" >> $GITHUB_ENV
 
+      - name: 📥 拉取 LB2004 引导程序 + model_database
+        shell: bash
+        run: |
+          echo "=== 从 kemp233/u-boot 获取 lb2004 引导加载程序 ==="
+          mkdir -p lb2004-boot
+          curl -fsSL -o lb2004-boot/idbloader.img \
+            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/idbloader.img"
+          curl -fsSL -o lb2004-boot/u-boot.itb \
+            "https://raw.githubusercontent.com/kemp233/u-boot/main/u-boot/rockchip/lb2004/u-boot.itb"
+          ls -lh lb2004-boot/
+
+          echo "=== 拉取 model_database.conf (含 lb2004 RK3566 条目) ==="
+          curl -fsSL -o model_database.conf \
+            "https://raw.githubusercontent.com/kemp233/amlogic-s9xxx-armbian/main/build-armbian/armbian-files/common-files/etc/model_database.conf"
+          grep "lb2004" model_database.conf || echo "⚠️ lb2004 未在 model_database.conf 中找到!"
+          echo "model_database.conf: $(wc -l < model_database.conf) 行"
+
       - name: Compile the kernel [${{ inputs.kernel_version }}]
         uses: ophub/amlogic-s9xxx-armbian@main
         id: compile
