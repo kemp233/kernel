@@ -180,15 +180,13 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 💉 LB2004 DTS 注入 + 后台探针
+      - name: 🔍 LB2004 后台探针 (硬链接抢救 + 编译产物抓取)
         shell: bash
         run: |
           RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
           mkdir -p "$RESCUE_DIR"
           TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
           echo "=== LB2004 探针启动 $(date) ===" > "$TRACE_LOG"
-          DTS_SRC="${{ github.workspace }}/kernel-patch/beta/linux-6.1.y-rockchip-main/rk3566-lb2004-bsp6.1.dts"
-          INJECTED=0
 
           (
             while true; do
@@ -199,24 +197,8 @@ jobs:
                 [ -f "$t" ] && continue
                 ln "$f" "$t" 2>/dev/null && echo "[$(date +%T)] 🔒 $fn" >> "$TRACE_LOG"
               done
-
               DID=$(docker ps -q --filter "name=armbian-ophub" 2>/dev/null)
               if [ -n "$DID" ]; then
-                KSRC=$(docker exec $DID bash -c 'ls -d /opt/kernel/compile-kernel/kernel/linux-* 2>/dev/null | head -1')
-                if [ -n "$KSRC" ] && [ "$INJECTED" -eq 0 ]; then
-                  DMF="$KSRC/arch/arm64/boot/dts/rockchip/Makefile"
-                  DTS_DIR="$KSRC/arch/arm64/boot/dts/rockchip"
-                  # 注入 DTS 文件
-                  docker cp "$DTS_SRC" ${DID}:"$DTS_DIR/rk3566-lb2004.dts" 2>/dev/null && \
-                    echo "[$(date +%T)] ✅ DTS 注入" >> "$TRACE_LOG"
-                  # 注入 Makefile 条目（在 orangepi-3b-v2.1 之后）
-                  if ! docker exec $DID grep -q "lb2004" "$DMF" 2>/dev/null; then
-                    docker exec $DID sed -i '/rk3566-orangepi-3b-v2.1.dtb/a dtb-\\$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb' "$DMF" 2>/dev/null && \
-                      echo "[$(date +%T)] ✅ Makefile 注入成功" >> "$TRACE_LOG"
-                  fi
-                  INJECTED=1
-                fi
-                # 抓取容器内 lb2004 编译产物
                 docker exec $DID bash -c 'find /opt/kernel/ -type f \( -name "*lb2004*" -o -path "*/rockchip/*lb2004*" \) 2>/dev/null' | while read f; do
                   docker cp ${DID}:"$f" "$RESCUE_DIR/$(basename "$f")" 2>/dev/null && \
                     echo "[$(date +%T)] 📦 $(basename "$f")" >> "$TRACE_LOG"
@@ -245,7 +227,7 @@ jobs:
           docker_hostpath: /builder
           delete_source: false
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
-          kernel_package: ${{ inputs.kernel_package }}
+
 
       - name: 📊 LB2004 编译审计报告
         if: always()
@@ -255,7 +237,7 @@ jobs:
 
           echo "### 🎯 LB2004 编译结果" >> $GITHUB_STEP_SUMMARY
           if ls "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" 2>/dev/null; then
-            echo "✅ **LB2004 DTB 编译成功！**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **LB2004 DTB 编译成功!**" >> $GITHUB_STEP_SUMMARY
             ls -lh "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **未找到 rk3566-lb2004.dtb**" >> $GITHUB_STEP_SUMMARY
@@ -264,26 +246,14 @@ jobs:
           echo "### 📦 全部抢救产物" >> $GITHUB_STEP_SUMMARY
           echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
           ls -lh "${{ github.workspace }}/RESCUE_ZONE/" >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "(无)" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
+          echo '\`\`\`'" >> $GITHUB_STEP_SUMMARY
 
           echo "### 📜 探针轨迹" >> $GITHUB_STEP_SUMMARY
           echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
           cat "${{ github.workspace }}/rescue_trace.log" 2>/dev/null || echo "(无轨迹)" >> $GITHUB_STEP_SUMMARY
           echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
 
-          echo "### 🔬 LB2004 编译细节 (.cmd)" >> $GITHUB_STEP_SUMMARY
-          for cmdfile in "${{ github.workspace }}/RESCUE_ZONE"/*lb2004*.cmd; do
-            [ -f "$cmdfile" ] || continue
-            echo "**$(basename "$cmdfile"):**" >> $GITHUB_STEP_SUMMARY
-            echo '\`\`\`shell' >> $GITHUB_STEP_SUMMARY
-            cat "$cmdfile" >> $GITHUB_STEP_SUMMARY
-            echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
-          done
 
-          echo "### 🔍 宿主机残留" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
-          sudo find /builder -iname "*lb2004*" 2>/dev/null || echo "(无残留)" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
 
 
 
