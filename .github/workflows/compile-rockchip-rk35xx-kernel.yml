@@ -123,7 +123,6 @@ jobs:
           sudo apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
           sudo apt-get -y install $(curl -fsSL https://ophub.org/ubuntu2604-build-armbian-depends)
           sudo systemctl daemon-reload
-          #sudo apt-get -y full-upgrade
           sudo apt-get -y autoremove --purge
           sudo apt-get clean
           sudo sed -i '/NVM_DIR/d;/skel/d' /root/{.bashrc,.profile}
@@ -138,7 +137,6 @@ jobs:
       - name: Create virtual disk for extended storage
         id: disk
         run: |
-          # Get available space in exact GB
           root_avail=$(df --block-size=1G / | tail -1 | awk '{print $4}')
           root_size=$(( root_avail - 4 ))
           [[ "${root_size}" -gt 0 ]] || { echo "Error: Insufficient space on /: ${root_avail}G available"; exit 1; }
@@ -157,15 +155,13 @@ jobs:
       - name: Get kernel source commit hash
         id: kernelhash
         run: |
-          # Get the kernel source branch
           kernel_source="${{ inputs.kernel_source }}"
           [[ "${kernel_source}" =~ @ ]] && kernel_branch="$(echo "${kernel_source}" | awk -F'@' '{print $2}')" || kernel_branch="main"
 
-          # Get the latest source hash from the kernel repository
           api_url="https://api.github.com/repos/${{ inputs.kernel_source }}/git/ref/heads/${kernel_branch}"
           source_hash=$(curl -fsSL -m 20 \
               -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Authorization: Bearer *** secrets.GITHUB_TOKEN }}" \
               ${api_url} |
               jq -r '.object.sha'
           )
@@ -181,18 +177,19 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 👁 编译链路探针 (Compile 前启动)
+      - name: 👁 编译链路探针 (强化版)
         shell: bash
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq inotify-tools
-          LOG_FILE="/tmp/trace_dtb.log"
-          echo "==== 探针启动 $(date) ====" > $LOG_FILE
+          LOG_FILE="${{ github.workspace }}/trace_dtb.log"
+          echo "==== 探针启动 $(date) ====" > "$LOG_FILE"
+          sudo sysctl fs.inotify.max_user_watches=524288
+
           (
-            inotifywait -mr -e create,modify,moved_to --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
-              /builder 2>/dev/null | grep --line-buffered -iE "lb2004|h96max-v56|Makefile.*rockchip" >> $LOG_FILE
+            inotifywait -mr -e create,modify,moved_to,delete --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
+              /builder 2>/dev/null | grep --line-buffered -iE "lb2004|h96max|Makefile" >> "$LOG_FILE"
           ) &
           echo "PROBE_PID=$!" >> $GITHUB_ENV
-          echo "✅ 探针 PID=$!, 监控 /builder"
 
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
@@ -211,36 +208,31 @@ jobs:
           kernel_patch: kernel-patch/beta
           enable_log: true
           docker_hostpath: /builder
+          delete_source: false
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
-      - name: 📊 审计 (探针 + 考古)
+
+      - name: 📊 终极审计报告
         if: always()
         shell: bash
         run: |
-          kill ${PROBE_PID} 2>/dev/null || true; sleep 2
-          echo "### 📡 探针事件" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
-          sort /tmp/trace_dtb.log 2>/dev/null | head -200 >> $GITHUB_STEP_SUMMARY || echo "  无数据" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
+          sudo kill ${PROBE_PID} 2>/dev/null || true
 
-          echo "### 📦 lb2004 文件" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
-          find /builder -iname "*lb2004*" 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "### 📡 探针：文件系统事件流" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          [ -f "${{ github.workspace }}/trace_dtb.log" ] && cat "${{ github.workspace }}/trace_dtb.log" >> $GITHUB_STEP_SUMMARY || echo "探针日志丢失" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-          echo "### 📦 h96max-v56 参考" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
-          find /builder -iname "*h96max*" 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
-
-          echo "### 📝 Makefile" >> $GITHUB_STEP_SUMMARY
-          for m in $(find /builder -name "Makefile" -path "*/dts/rockchip/*" 2>/dev/null); do
-            grep -q lb2004 "$m" && echo "- ✅ \`$m\`" >> $GITHUB_STEP_SUMMARY || echo "- ❌ \`$m\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 物理存证 (lb2004 vs h96max)" >> $GITHUB_STEP_SUMMARY
+          echo "| 文件名 | 物理路径 | 大小 |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          find /builder -iname "*lb2004*" -o -iname "*h96max*" 2>/dev/null | while read f; do
+            echo "| $(basename $f) | \`$f\` | $(stat -c%s $f 2>/dev/null || echo 0)B |" >> $GITHUB_STEP_SUMMARY
           done
 
-          echo "### 📋 日志" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
-          find /builder -name "*.log" -exec grep -i "lb2004" {} + 2>/dev/null | head -100 >> $GITHUB_STEP_SUMMARY || echo "  无" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 编译日志中的 lb2004 痕迹" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          find /builder -name "*.log" -o -name "stdout.log" 2>/dev/null | xargs grep -iH "lb2004" >> $GITHUB_STEP_SUMMARY || echo "日志里压根没有提过 lb2004" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
@@ -254,12 +246,11 @@ jobs:
           make_latest: true
           gh_token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            - These kernels can be used for `Armbian`, `OpenWrt` and `FnNAS`.
+            - These RTISTIC kernels can be used for `Armbian`, `OpenWrt` and `FnNAS`.
             - These are dedicated BSP kernels for `Rockchip rk3528/rk3566/rk3568` and are not compatible with other series.
-            - Those with `flippy` in the filename are manually uploaded kernels maintained and shared by [flippy](https://github.com/unifreq), while the others are automatically compiled online.
 
             <br />
 
             - 这些内核可用于 `Armbian`, `OpenWrt` 和 `FnNAS`。
             - 这些是 `Rockchip rk3528/rk3566/rk3568` 专用 BSP 内核，和其他系列不通用。
-            - 其中名字里带有 `flippy` 的是手动上传的由 [flippy](https://github.com/unifreq) 大佬维护制作分享的内核，其他是在线自动编译的。
+            - LB2004 dtb included
