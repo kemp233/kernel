@@ -181,25 +181,23 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 🕵️ Start full-path trace probe
+      - name: 🕵️ Trace probe (h96max-v56 only)
         shell: bash
         run: |
-          for i in $(seq 1 30); do
-            docker ps -q --filter "name=armbian-ophub" 2>/dev/null | grep -q . && break
+          for i in $(seq 1 60); do
+            if docker ps -q --filter "name=armbian-ophub" | grep -q .; then
+              echo "Container found"
+              docker exec -u 0 armbian-ophub sh -c "apt-get update -qq && apt-get install -y -qq inotify-tools"
+              break
+            fi
             sleep 2
           done
-          docker exec armbian-ophub apt-get -y install inotify-tools 2>/dev/null || true
-          LOG_FILE="/tmp/trace_dtb.log"
-          echo "==== Trace probe started $(date) ====" > ${LOG_FILE}
+          docker exec -u 0 armbian-ophub mkdir -p /opt/kernel/compile-kernel
           docker exec -d armbian-ophub sh -c '
-            inotifywait -mr -e create,modify,move \
-              --include "lb2004|h96max-v56" \
-              /opt/kernel/compile-kernel 2>/dev/null | while read dir event file; do
-                ts=$(date +"%H:%M:%S")
-                echo "[${ts}] [${event}] ${dir}${file}" >> /tmp/trace_dtb.log
-            done
+            inotifywait -mr -e create,modify,move --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
+              /opt/kernel/compile-kernel | grep -iE "lb2004|h96max-v56" >> /opt/kernel/compile-kernel/trace_dtb.log 2>&1
           '
-          echo "inotify trace launched"
+          echo "✅ probe launched, log at /builder/compile-kernel/trace_dtb.log"
 
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
@@ -224,26 +222,11 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          echo "=== Checking for rk3566-lb2004.dtb ==="
-          DOCKER_NAME=armbian-ophub
-          if docker ps -q --filter "name=${DOCKER_NAME}" | grep -q .; then
-            KERNEL_SRC=$(docker exec ${DOCKER_NAME} sh -c "ls -d /opt/kernel/compile-kernel/kernel/linux-* 2>/dev/null | head -1")
-            if [ -n "${KERNEL_SRC}" ]; then
-              docker exec ${DOCKER_NAME} sh -c "
-                echo '--- Patch applied in kernel source? ---'
-                ls -la ${KERNEL_SRC}/arch/arm64/boot/dts/rockchip/rk3566-lb2004.dts 2>/dev/null || echo '  DTS NOT FOUND'
-                ls -la ${KERNEL_SRC}/arch/arm64/boot/dts/rockchip/rk3566-lb2004.dtb 2>/dev/null || echo '  DTB NOT FOUND'
-                echo '--- grep Makefile ---'
-                grep 'lb2004' ${KERNEL_SRC}/arch/arm64/boot/dts/rockchip/Makefile || echo '  NOT IN Makefile'
-              "
-            fi
-          fi
-          echo ""
-          echo "=== Checking output dir ==="
-          find /builder/compile-kernel/output -name '*lb2004*' 2>/dev/null || echo "  No lb2004 files in output"
-          echo ""
-          echo "=== Checking packed artifacts ==="
-          find ${PACKAGED_OUTPUTPATH:-/builder/compile-kernel/output} -name '*lb2004*' 2>/dev/null || echo "  No lb2004 in packed output"
+          echo "=== Trace Report (h96max-v56 reference lifecycle) ==="
+          cat /builder/compile-kernel/trace_dtb.log 2>/dev/null | head -50 || echo "(no trace data)"
+          echo "---"
+          echo "=== Checking lb2004 ==="
+          find /builder/compile-kernel -iname '*lb2004*' 2>/dev/null || echo "  No lb2004 files"
 
       - name: 📊 Generate trace probe report
         if: always()
