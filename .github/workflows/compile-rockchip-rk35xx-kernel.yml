@@ -181,6 +181,31 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
+      - name: 🕵️ Start full-path trace probe
+        shell: bash
+        run: |
+          LOG_FILE="/tmp/trace_dtb.log"
+          echo "==== Trace probe started $(date) ====" > $LOG_FILE
+          (
+            while true; do
+              ts=$(date +"%H:%M:%S")
+              find /builder/compile-kernel -iname "*lb2004*" -o -iname "*h96max-v56*" 2>/dev/null | while read f; do
+                echo "[$ts] $(stat -c '%a %s %n' "$f" 2>/dev/null)" >> $LOG_FILE
+              done
+              for dir in /builder/compile-kernel/output /builder/compile-kernel/kernel; do
+                if [ -d "$dir" ]; then
+                  find "$dir" -name "*.dtb" 2>/dev/null | while read f; do
+                    b=$(basename "$f")
+                    grep -q "$b" $LOG_FILE || echo "[$ts] DTB: $(stat -c '%a %s %n' "$f" 2>/dev/null)" >> $LOG_FILE
+                  done
+                fi
+              done
+              sleep 5
+            done
+            echo "[$(date +%H:%M:%S)] probe ended" >> $LOG_FILE
+          ) &
+          echo "TRACE_PID=$!" >> $GITHUB_ENV
+
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
         if: ${{ !cancelled() }}
@@ -224,6 +249,31 @@ jobs:
           echo ""
           echo "=== Checking packed artifacts ==="
           find ${PACKAGED_OUTPUTPATH:-/builder/compile-kernel/output} -name '*lb2004*' 2>/dev/null || echo "  No lb2004 in packed output"
+
+      - name: 📊 Generate trace probe report
+        if: always()
+        shell: bash
+        run: |
+          kill ${TRACE_PID} 2>/dev/null || true
+          sleep 2
+          echo "=== Trace Report ==="
+          echo "## File lifecycle for lb2004 / h96max-v56"
+          echo '```text'
+          sort -u /tmp/trace_dtb.log 2>/dev/null || echo "(no trace data)"
+          echo '```'
+          # Check result
+          if grep -q 'output.*lb2004.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
+            echo "✅ lb2004 dtb reached output!"
+          elif grep -q 'lb2004.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
+            echo "⚠️  lb2004 dtb found but not in output"
+          else
+            echo "❌ lb2004 dtb never appeared"
+          fi
+          echo ""
+          # Also show h96-v56 for reference
+          if grep -q 'h96max-v56.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
+            echo "✅ h96max-v56 dtb (reference) appeared"
+          fi
 
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
