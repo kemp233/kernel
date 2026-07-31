@@ -181,20 +181,6 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 🕵 宿主机毫秒级实时探针 (监控 /builder 挂载点)
-        shell: bash
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq inotify-tools
-          LOG_FILE="${{ github.workspace }}/trace_dtb.log"
-          echo "==== 宿主机探针启动 $(date) ====" > $LOG_FILE
-          (
-            echo "正在监控 /builder 物理路径..."
-            inotifywait -mr -e create,modify,moved_to --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
-              /builder 2>/dev/null | grep --line-buffered -iE "lb2004|h96max-v56" >> $LOG_FILE
-          ) &
-          echo "PROBE_PID=$!" >> $GITHUB_ENV
-          echo "✅ 宿主机探针已挂载到 /builder，PID: $!"
-
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
         if: ${{ !cancelled() }}
@@ -214,34 +200,47 @@ jobs:
           docker_hostpath: /builder
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
 
-      - name: Verify LB2004 dtb
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          kill ${PROBE_PID} 2>/dev/null || true; sleep 2
-          echo "=== Trace Report (h96max-v56 lifecycle) ==="
-          cat ${{ github.workspace }}/trace_dtb.log 2>/dev/null || echo "(no trace data)"
-          echo "---"
-          echo "=== lb2004 status ==="
-          find /builder -iname '*lb2004*' 2>/dev/null || echo "  No lb2004 files"
-
-      - name: 📊 Generate trace probe report
+      - name: 📊 深度链路审计 (考古报告)
         if: always()
         shell: bash
         run: |
-          docker exec armbian-ophub sh -c "killall inotifywait 2>/dev/null; true"
-          echo "=== Trace Report (inotify)"
-          echo '```'
-          docker exec armbian-ophub cat /tmp/trace_dtb.log 2>/dev/null || echo "(no trace data)"
-          echo '```'
-          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'lb2004'"; then
-            echo ">>> lb2004 appeared in trace"
+          echo "### 🚀 LB2004 编译链路审计报告" >> $GITHUB_STEP_SUMMARY
+          echo "报告时间: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "#### 1. 物理轨迹定位 (DTS/DTB)" >> $GITHUB_STEP_SUMMARY
+          find /builder -iname "*lb2004*" -o -iname "*h96max-v56*" 2>/dev/null | while read f; do
+            fsize=$(stat -c%s "$f" 2>/dev/null || echo "0")
+            fname=$(basename "$f")
+            echo "- [${fsize}B] \`$f\`" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 2. Makefile 注入验证" >> $GITHUB_STEP_SUMMARY
+          for m in $(find /builder -name "Makefile" -path "*/dts/rockchip/*" 2>/dev/null); do
+            echo "检查: \`$m\`" >> $GITHUB_STEP_SUMMARY
+            if grep -q "lb2004" "$m"; then
+              echo "- ✅ lb2004 条目存在" >> $GITHUB_STEP_SUMMARY
+              grep "lb2004" "$m" | sed 's/^/- \`/' | sed 's/$/\`/' >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ 未发现 lb2004 条目" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 3. 编译器中间件检查 (.cmd)" >> $GITHUB_STEP_SUMMARY
+          CMD_FILE=$(find /builder -name ".rk3566-lb2004.dtb.cmd" 2>/dev/null)
+          if [ -n "$CMD_FILE" ]; then
+            echo "- ✅ 编译器已触发 (发现 .cmd)" >> $GITHUB_STEP_SUMMARY
           else
-            echo ">>> lb2004 NEVER appeared"
+            echo "- ❌ 编译器从未处理 lb2004" >> $GITHUB_STEP_SUMMARY
           fi
-          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'h96max'"; then
-            echo ">>> h96max-v56 (reference) appeared in trace"
-          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 4. 日志块 (lb2004 相关报错)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          find /builder -name "*.log" -exec grep -iC 3 "lb2004" {} + 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "未发现 lb2004 日志" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
