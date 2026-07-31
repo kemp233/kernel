@@ -181,6 +181,20 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
+      - name: 🕵 宿主机毫秒级实时探针 (监控 /builder 挂载点)
+        shell: bash
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq inotify-tools
+          LOG_FILE="${{ github.workspace }}/trace_dtb.log"
+          echo "==== 宿主机探针启动 $(date) ====" > $LOG_FILE
+          (
+            echo "正在监控 /builder 物理路径..."
+            inotifywait -mr -e create,modify,moved_to --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
+              /builder 2>/dev/null | grep --line-buffered -iE "lb2004|h96max-v56" >> $LOG_FILE
+          ) &
+          echo "PROBE_PID=$!" >> $GITHUB_ENV
+          echo "✅ 宿主机探针已挂载到 /builder，PID: $!"
+
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
         if: ${{ !cancelled() }}
@@ -200,46 +214,34 @@ jobs:
           docker_hostpath: /builder
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
 
-
-      - name: Inject LB2004 DTS + Makefile + rebuild dtb
+      - name: Verify LB2004 dtb
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          DOCKER_NAME=armbian-ophub
-          if ! docker ps -q --filter "name=${DOCKER_NAME}" | grep -q .; then
-            echo "::error::Docker not running"; exit 1
+          kill ${PROBE_PID} 2>/dev/null || true; sleep 2
+          echo "=== Trace Report (h96max-v56 lifecycle) ==="
+          cat ${{ github.workspace }}/trace_dtb.log 2>/dev/null || echo "(no trace data)"
+          echo "---"
+          echo "=== lb2004 status ==="
+          find /builder -iname '*lb2004*' 2>/dev/null || echo "  No lb2004 files"
+
+      - name: 📊 Generate trace probe report
+        if: always()
+        shell: bash
+        run: |
+          docker exec armbian-ophub sh -c "killall inotifywait 2>/dev/null; true"
+          echo "=== Trace Report (inotify)"
+          echo '```'
+          docker exec armbian-ophub cat /tmp/trace_dtb.log 2>/dev/null || echo "(no trace data)"
+          echo '```'
+          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'lb2004'"; then
+            echo ">>> lb2004 appeared in trace"
+          else
+            echo ">>> lb2004 NEVER appeared"
           fi
-          KERNEL_SRC=/opt/kernel/compile-kernel/kernel/linux-6.1.y-rockchip-main
-          DTS_DST=${KERNEL_SRC}/arch/arm64/boot/dts/rockchip
-
-          echo "### 1/4 Copy DTS ###"
-          docker cp kernel-patch/beta/linux-6.1.y-rockchip-main/rk3566-lb2004-bsp6.1.dts \
-            ${DOCKER_NAME}:${DTS_DST}/rk3566-lb2004.dts
-          docker exec ${DOCKER_NAME} ls -la ${DTS_DST}/rk3566-lb2004.dts || { echo "FAIL"; exit 1; }
-
-          echo "### 2/4 Inject Makefile ###"
-          docker exec ${DOCKER_NAME} bash -c "
-            cd ${DTS_DST}
-            grep -q 'rk3566-lb2004.dtb' Makefile || \
-              sed -i '/rk3566-orangepi-3b-v2.1/ a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb' Makefile
-            grep lb2004 Makefile || { echo 'Makefile FAIL'; exit 1; }
-          "
-
-          echo "### 3/4 Rebuild dtb ###"
-          docker exec ${DOCKER_NAME} bash -c "
-            export ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu-
-            export PATH=/usr/local/toolchain/arm-gnu-toolchain-15.3.rel1-aarch64-aarch64-none-linux-gnu/bin:\$PATH
-            cd ${KERNEL_SRC}
-            ls .config >/dev/null || { echo 'No .config'; exit 1; }
-            make dtbs 2>&1 | tail -10
-          "
-
-          echo "### 4/4 Verify ###"
-          docker exec ${DOCKER_NAME} ls -la ${DTS_DST}/rk3566-lb2004.dtb && echo "*** DTB BUILT ***" || { echo "MISSING"; exit 1; }
-          mkdir -p /builder/compile-kernel/output/dtbs/6.1/dtb-rockchip/rockchip
-          docker cp ${DOCKER_NAME}:${DTS_DST}/rk3566-lb2004.dtb \
-            /builder/compile-kernel/output/dtbs/6.1/dtb-rockchip/rockchip/rk3566-lb2004.dtb
-          echo "DONE"
+          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'h96max'"; then
+            echo ">>> h96max-v56 (reference) appeared in trace"
+          fi
 
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
@@ -253,5 +255,12 @@ jobs:
           make_latest: true
           gh_token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            - BSP kernels for Rockchip rk3528/rk3566/rk3568
-            - LB2004 dtb included
+            - These kernels can be used for `Armbian`, `OpenWrt` and `FnNAS`.
+            - These are dedicated BSP kernels for `Rockchip rk3528/rk3566/rk3568` and are not compatible with other series.
+            - Those with `flippy` in the filename are manually uploaded kernels maintained and shared by [flippy](https://github.com/unifreq), while the others are automatically compiled online.
+
+            <br />
+
+            - 这些内核可用于 `Armbian`, `OpenWrt` 和 `FnNAS`。
+            - 这些是 `Rockchip rk3528/rk3566/rk3568` 专用 BSP 内核，和其他系列不通用。
+            - 其中名字里带有 `flippy` 的是手动上传的由 [flippy](https://github.com/unifreq) 大佬维护制作分享的内核，其他是在线自动编译的。
