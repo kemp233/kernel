@@ -198,13 +198,15 @@ jobs:
           echo "model_database.conf: $(wc -l < model_database.conf) 行"
 
 
-      - name: 🔍 LB2004 后台探针 (硬链接抢救 + 编译产物追踪)
+      - name: 💉 LB2004 DTS 注入 + 后台探针
         shell: bash
         run: |
           RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
           mkdir -p "$RESCUE_DIR"
           TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
           echo "=== LB2004 探针启动 $(date) ===" > "$TRACE_LOG"
+          DTS_SRC="${{ github.workspace }}/kernel-patch/beta/linux-6.1.y-rockchip-main/rk3566-lb2004-bsp6.1.dts"
+          INJECTED=0
 
           (
             while true; do
@@ -215,10 +217,27 @@ jobs:
                 [ -f "$t" ] && continue
                 ln "$f" "$t" 2>/dev/null && echo "[$(date +%T)] 🔒 $fn" >> "$TRACE_LOG"
               done
+
               DID=$(docker ps -q --filter "name=armbian-ophub" 2>/dev/null)
               if [ -n "$DID" ]; then
+                KSRC=$(docker exec $DID bash -c 'ls -d /opt/kernel/compile-kernel/kernel/linux-* 2>/dev/null | head -1')
+                if [ -n "$KSRC" ] && [ "$INJECTED" -eq 0 ]; then
+                  DMF="$KSRC/arch/arm64/boot/dts/rockchip/Makefile"
+                  DTS_DIR="$KSRC/arch/arm64/boot/dts/rockchip"
+                  # 注入 DTS 文件
+                  docker cp "$DTS_SRC" ${DID}:"$DTS_DIR/rk3566-lb2004.dts" 2>/dev/null && \
+                    echo "[$(date +%T)] ✅ DTS 注入" >> "$TRACE_LOG"
+                  # 注入 Makefile 条目（在 orangepi-3b-v2.1 之后）
+                  if ! docker exec $DID grep -q "lb2004" "$DMF" 2>/dev/null; then
+                    docker exec $DID sed -i '/rk3566-orangepi-3b-v2.1.dtb/a dtb-\\$(CONFIG_ARCH_ROCKCHIP) += rk3566-lb2004.dtb' "$DMF" 2>/dev/null && \
+                      echo "[$(date +%T)] ✅ Makefile 注入成功" >> "$TRACE_LOG"
+                  fi
+                  INJECTED=1
+                fi
+                # 抓取容器内 lb2004 编译产物
                 docker exec $DID bash -c 'find /opt/kernel/ -type f \( -name "*lb2004*" -o -path "*/rockchip/*lb2004*" \) 2>/dev/null' | while read f; do
-                  docker cp ${DID}:"$f" "$RESCUE_DIR/$(basename "$f")" 2>/dev/null &&                     echo "[$(date +%T)] 📦 $(basename "$f")" >> "$TRACE_LOG"
+                  docker cp ${DID}:"$f" "$RESCUE_DIR/$(basename "$f")" 2>/dev/null && \
+                    echo "[$(date +%T)] 📦 $(basename "$f")" >> "$TRACE_LOG"
                 done
               fi
               sleep 0.5
