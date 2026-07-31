@@ -184,27 +184,22 @@ jobs:
       - name: 🕵️ Start full-path trace probe
         shell: bash
         run: |
+          for i in $(seq 1 30); do
+            docker ps -q --filter "name=armbian-ophub" 2>/dev/null | grep -q . && break
+            sleep 2
+          done
+          docker exec armbian-ophub apt-get -y install inotify-tools 2>/dev/null || true
           LOG_FILE="/tmp/trace_dtb.log"
-          echo "==== Trace probe started $(date) ====" > $LOG_FILE
-          (
-            while true; do
-              ts=$(date +"%H:%M:%S")
-              find /builder/compile-kernel -iname "*lb2004*" -o -iname "*h96max-v56*" 2>/dev/null | while read f; do
-                echo "[$ts] $(stat -c '%a %s %n' "$f" 2>/dev/null)" >> $LOG_FILE
-              done
-              for dir in /builder/compile-kernel/output /builder/compile-kernel/kernel; do
-                if [ -d "$dir" ]; then
-                  find "$dir" -name "*.dtb" 2>/dev/null | while read f; do
-                    b=$(basename "$f")
-                    grep -q "$b" $LOG_FILE || echo "[$ts] DTB: $(stat -c '%a %s %n' "$f" 2>/dev/null)" >> $LOG_FILE
-                  done
-                fi
-              done
-              sleep 5
+          echo "==== Trace probe started $(date) ====" > ${LOG_FILE}
+          docker exec -d armbian-ophub sh -c '
+            inotifywait -mr -e create,modify,move \
+              --include "lb2004|h96max-v56" \
+              /opt/kernel/compile-kernel 2>/dev/null | while read dir event file; do
+                ts=$(date +"%H:%M:%S")
+                echo "[${ts}] [${event}] ${dir}${file}" >> /tmp/trace_dtb.log
             done
-            echo "[$(date +%H:%M:%S)] probe ended" >> $LOG_FILE
-          ) &
-          echo "TRACE_PID=$!" >> $GITHUB_ENV
+          '
+          echo "inotify trace launched"
 
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
@@ -254,25 +249,18 @@ jobs:
         if: always()
         shell: bash
         run: |
-          kill ${TRACE_PID} 2>/dev/null || true
-          sleep 2
-          echo "=== Trace Report ==="
-          echo "## File lifecycle for lb2004 / h96max-v56"
-          echo '```text'
-          sort -u /tmp/trace_dtb.log 2>/dev/null || echo "(no trace data)"
+          docker exec armbian-ophub sh -c "killall inotifywait 2>/dev/null; true"
+          echo "=== Trace Report (inotify)"
           echo '```'
-          # Check result
-          if grep -q 'output.*lb2004.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
-            echo "✅ lb2004 dtb reached output!"
-          elif grep -q 'lb2004.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
-            echo "⚠️  lb2004 dtb found but not in output"
+          docker exec armbian-ophub cat /tmp/trace_dtb.log 2>/dev/null || echo "(no trace data)"
+          echo '```'
+          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'lb2004'"; then
+            echo ">>> lb2004 appeared in trace"
           else
-            echo "❌ lb2004 dtb never appeared"
+            echo ">>> lb2004 NEVER appeared"
           fi
-          echo ""
-          # Also show h96-v56 for reference
-          if grep -q 'h96max-v56.*\.dtb' /tmp/trace_dtb.log 2>/dev/null; then
-            echo "✅ h96max-v56 dtb (reference) appeared"
+          if docker exec armbian-ophub sh -c "cat /tmp/trace_dtb.log 2>/dev/null | grep -q 'h96max'"; then
+            echo ">>> h96max-v56 (reference) appeared in trace"
           fi
 
       - name: Upload Kernel to Release
