@@ -177,19 +177,41 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 👁 编译链路探针 (强化版)
+
+
+      - name: 🛡️ 启动硬链接抢救员 (全速锁定产物)
         shell: bash
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq inotify-tools
-          LOG_FILE="${{ github.workspace }}/trace_dtb.log"
-          echo "==== 探针启动 $(date) ====" > "$LOG_FILE"
-          sudo sysctl fs.inotify.max_user_watches=524288
-
+          # 1. 创建绝对安全的抢救目录 (位于 workspace，不受 /builder 清理影响)
+          RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
+          mkdir -p "$RESCUE_DIR"
+          TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
+          echo "==== 抢救员启动记录 $(date) ====" > "$TRACE_LOG"
+          
+          echo "==== 抢救员已就位：监控 /builder 挂载点 ===="
           (
-            inotifywait -mr -e create,modify,moved_to,delete --timefmt "%H:%M:%S" --format "[%T] [%e] %w%f" \
-              /builder 2>/dev/null | grep --line-buffered -iE "lb2004|h96max|Makefile" >> "$LOG_FILE"
+            while true; do
+              # 搜索所有生成的 .dtb 文件，以及包含 lb2004/h96max 关键字的文件
+              # 使用 ln (硬链接) 而不是 cp (拷贝)，速度极快且共享 Inode
+              find /builder -type f \( -name "*.dtb" -o -name "*lb2004*" -o -name "*h96max*" \) 2>/dev/null | while read f; do
+                # 生成一个基于路径哈希的唯一文件名，防止重名覆盖
+                f_identity=$(echo "$f" | md5sum | cut -c1-8)
+                f_name=$(basename "$f")
+                target_path="$RESCUE_DIR/${f_identity}_${f_name}"
+                
+                if [ ! -f "$target_path" ]; then
+                  # 执行硬链接：即便原文件被删，这个链接依然指向原始数据
+                  if ln "$f" "$target_path" 2>/dev/null; then
+                    echo "[$(date +%T)] 🔒 成功锁死产物: $f" >> "$TRACE_LOG"
+                  fi
+                fi
+              done
+              # 0.5秒扫描一次，极速对抗 cleanup
+              sleep 0.5 
+            done
           ) &
-          echo "PROBE_PID=$!" >> $GITHUB_ENV
+          echo "RESCUE_PID=$!" >> $GITHUB_ENV
+          echo "✅ 抢救员后台运行中，PID: $!"
 
       - name: Compile the kernel [ ${{ inputs.kernel_version }} ]
         uses: ophub/amlogic-s9xxx-armbian@main
@@ -211,29 +233,36 @@ jobs:
           delete_source: false
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
 
-      - name: 📊 终极审计报告
+      - name: 📊 终极抢救与考古报告
         if: always()
         shell: bash
         run: |
-          sudo kill ${PROBE_PID} 2>/dev/null || true
-
-          echo "### 📡 探针：文件系统事件流" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          [ -f "${{ github.workspace }}/trace_dtb.log" ] && cat "${{ github.workspace }}/trace_dtb.log" >> $GITHUB_STEP_SUMMARY || echo "探针日志丢失" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-          echo "### 📦 物理存证 (lb2004 vs h96max)" >> $GITHUB_STEP_SUMMARY
-          echo "| 文件名 | 物理路径 | 大小 |" >> $GITHUB_STEP_SUMMARY
+          # 停止抢救进程
+          [ -n "${RESCUE_PID}" ] && sudo kill ${RESCUE_PID} || true
+          
+          echo "### 🆘 成功从清理脚本中“抢下”的产物" >> $GITHUB_STEP_SUMMARY
+          echo "| 文件标识 | 大小 | 原始路径预览 |" >> $GITHUB_STEP_SUMMARY
           echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          find /builder -iname "*lb2004*" -o -iname "*h96max*" 2>/dev/null | while read f; do
-            echo "| $(basename $f) | \`$f\` | $(stat -c%s $f 2>/dev/null || echo 0)B |" >> $GITHUB_STEP_SUMMARY
-          done
+          
+          RESCUED_COUNT=$(ls ${{ github.workspace }}/RESCUE_ZONE | wc -l)
+          if [ "$RESCUED_COUNT" -gt 0 ]; then
+            ls -lh ${{ github.workspace }}/RESCUE_ZONE | grep -v "total" | while read line; do
+              echo "| \`$line\` | | |" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "| ❌ 失败 | 0B | 未能抢救到任何文件 |" >> $GITHUB_STEP_SUMMARY
+          fi
 
-          echo "### 📋 编译日志中的 lb2004 痕迹" >> $GITHUB_STEP_SUMMARY
+          echo "### 📜 抢救动作轨迹" >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
-          find /builder -name "*.log" -o -name "stdout.log" 2>/dev/null | xargs grep -iH "lb2004" >> $GITHUB_STEP_SUMMARY || echo "日志里压根没有提过 lb2004" >> $GITHUB_STEP_SUMMARY
+          cat "${{ github.workspace }}/rescue_trace.log" 2>/dev/null || echo "无轨迹数据" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
+          echo "### 🔍 最终现场物理残留 (不限路径)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          # 最后一次全盘搜索，看看有没有漏网之鱼
+          sudo find /builder -iname "*lb2004*" -o -iname "*h96max*" 2>/dev/null || echo "现场已被彻底清理" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Upload Kernel to Release
         uses: ophub/upload-to-releases@main
         if: ${{ env.PACKAGED_STATUS == 'success' && !cancelled() }}
