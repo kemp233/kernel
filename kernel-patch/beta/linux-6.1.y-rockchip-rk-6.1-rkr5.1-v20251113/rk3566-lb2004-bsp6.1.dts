@@ -45,7 +45,7 @@
 		};
 
 		/* 128MB DMA pool for NPU - MISSING in current Debian DTS */
-		rknpu: rknpu {
+		rknpu_reserved: rknpu {
 			compatible = "shared-dma-pool";
 			inactive;
 			reusable;
@@ -65,16 +65,6 @@
 	};
 
 	/* HDMI connector */
-	hdmi-con {
-		compatible = "hdmi-connector";
-		type = "a";
-
-		port {
-			hdmi_con_in: endpoint {
-				remote-endpoint = <&hdmi_out_con>;
-			};
-		};
-	};
 
 	/* External 125MHz clock for GMAC1 */
 	gmac1_clkin: external-gmac1-clock {
@@ -124,14 +114,6 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	pcie_pwr: pcie-pwr {
-		compatible = "regulator-fixed";
-		regulator-name = "pcie_pwr";
-		regulator-always-on;
-		regulator-boot-on;
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-	};
 
 	/* Audio */
 	rk809_sound: rk809-sound {
@@ -269,17 +251,7 @@
 	status = "okay";
 };
 
-&hdmi_in {
-	hdmi_in_vp0: endpoint {
-		remote-endpoint = <&vp0_out_hdmi>;
-	};
-};
 
-&hdmi_out {
-	hdmi_out_con: endpoint {
-		remote-endpoint = <&hdmi_con_in>;
-	};
-};
 
 &hdmi_sound {
 	status = "okay";
@@ -296,12 +268,6 @@
 	status = "okay";
 };
 
-&vp0 {
-	vp0_out_hdmi: endpoint@ROCKCHIP_VOP2_EP_HDMI0 {
-		reg = <ROCKCHIP_VOP2_EP_HDMI0>;
-		remote-endpoint = <&hdmi_in_vp0>;
-	};
-};
 
 /* I2C0: PMIC */
 &i2c0 {
@@ -550,19 +516,16 @@
 	status = "okay";
 };
 
-&usb_host1_xhci {
-	status = "okay";
-};
 
 &usb2phy1 {
 	status = "okay";
 };
 
-&usb2phy1_host {
+&u2phy1_host {
 	status = "okay";
 };
 
-&usb2phy1_otg {
+&u2phy1_otg {
 	status = "okay";
 };
 
@@ -572,8 +535,8 @@
 };
 
 /* NPU */
-&npu {
-	memory-region = <&rknpu>;
+&rknpu {
+	memory-region = <&rknpu_reserved>;
 	status = "okay";
 };
 
@@ -583,22 +546,8 @@
 	status = "okay";
 };
 
-/* PCIe */
-&pcie2x1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pcie_reset_h>;
-	reset-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>;
-	status = "okay";
-};
 
-&pcie30phy {
-	status = "okay";
-};
 
-&pcie3x2 {
-	phy-supply = <&pcie_pwr>;
-	status = "okay";
-};
 
 /* SATA */
 &sata2 {
@@ -659,17 +608,10 @@
 &pwm13 { status = "disabled"; };
 &pwm14 { status = "disabled"; };
 &pwm15 { status = "disabled"; };
-&pwm16_32k { status = "disabled"; };
 
 /* ADC keys */
-&adc_keys {
-	status = "disabled";
-};
 
 /* GPIO keys */
-&gpio_keys {
-	status = "disabled";
-};
 
 /* Pinctrl */
 &pinctrl {
@@ -724,9 +666,4 @@
 		};
 	};
 
-	pcie {
-		pcie_reset_h: pcie-reset-h {
-			rockchip,pins = <0 RK_PB4 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
 };
