@@ -181,34 +181,6 @@ jobs:
           restore-keys: |
             kernel-rk35xx-${{ inputs.kernel_toolchain }}-${{ inputs.kernel_version }}-
 
-      - name: 🔍 LB2004 后台探针 (硬链接抢救 + 编译产物抓取)
-        shell: bash
-        run: |
-          RESCUE_DIR="${{ github.workspace }}/RESCUE_ZONE"
-          mkdir -p "$RESCUE_DIR"
-          TRACE_LOG="${{ github.workspace }}/rescue_trace.log"
-          echo "=== LB2004 探针启动 $(date) ===" > "$TRACE_LOG"
-
-          (
-            while true; do
-              find /builder -type f \( -name "*lb2004*" -o -name "*.dtb" \) 2>/dev/null | while read f; do
-                fid=$(echo "$f" | md5sum | cut -c1-8)
-                fn=$(basename "$f")
-                t="$RESCUE_DIR/${fid}_${fn}"
-                [ -f "$t" ] && continue
-                ln "$f" "$t" 2>/dev/null && echo "[$(date +%T)] 🔒 $fn" >> "$TRACE_LOG"
-              done
-              DID=$(docker ps -q --filter "name=armbian-ophub" 2>/dev/null)
-              if [ -n "$DID" ]; then
-                docker exec $DID bash -c 'find /opt/kernel/ -type f \( -name "*lb2004*" -o -path "*/rockchip/*lb2004*" \) 2>/dev/null' | while read f; do
-                  docker cp ${DID}:"$f" "$RESCUE_DIR/$(basename "$f")" 2>/dev/null && \
-                    echo "[$(date +%T)] 📦 $(basename "$f")" >> "$TRACE_LOG"
-                done
-              fi
-              sleep 0.5
-            done
-          ) &
-          echo "RESCUE_PID=$!" >> $GITHUB_ENV
 
       - name: Compile the kernel [${{ inputs.kernel_version }}]
         uses: ophub/amlogic-s9xxx-armbian@main
@@ -230,52 +202,18 @@ jobs:
           docker_image: ophub/armbian-${{ inputs.docker_image }}:arm64
 
 
-      - name: 📊 LB2004 编译审计报告
+      - name: 📊 LB2004 编译产物抓取与报告
         if: always()
         shell: bash
         run: |
-          [ -n "${RESCUE_PID}" ] && sudo kill ${RESCUE_PID} || true
-
           echo "### 🎯 LB2004 编译结果" >> $GITHUB_STEP_SUMMARY
-          if ls "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" 2>/dev/null; then
+          DTB=$(find /builder -type f -name "rk3566-lb2004.dtb" 2>/dev/null | head -1)
+          if [ -n "$DTB" ]; then
             echo "✅ **LB2004 DTB 编译成功!**" >> $GITHUB_STEP_SUMMARY
-            ls -lh "${{ github.workspace }}/RESCUE_ZONE/rk3566-lb2004.dtb" >> $GITHUB_STEP_SUMMARY
+            ls -lh "$DTB" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **未找到 rk3566-lb2004.dtb**" >> $GITHUB_STEP_SUMMARY
+            echo "`text" >> $GITHUB_STEP_SUMMARY
+            find /builder -type f -name "*.dtb" 2>/dev/null | head -20 >> $GITHUB_STEP_SUMMARY || true
+            echo "`" >> $GITHUB_STEP_SUMMARY
           fi
-
-          echo "### 📦 全部抢救产物" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
-          ls -lh "${{ github.workspace }}/RESCUE_ZONE/" >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "(无)" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`'" >> $GITHUB_STEP_SUMMARY
-
-          echo "### 📜 探针轨迹" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`text' >> $GITHUB_STEP_SUMMARY
-          cat "${{ github.workspace }}/rescue_trace.log" 2>/dev/null || echo "(无轨迹)" >> $GITHUB_STEP_SUMMARY
-          echo '\`\`\`' >> $GITHUB_STEP_SUMMARY
-
-
-
-
-
-
-      - name: Upload Kernel to Release
-        uses: ophub/upload-to-releases@main
-        if: ${{ env.PACKAGED_STATUS == 'success' && !cancelled() }}
-        with:
-          tag: kernel_rk35xx
-          artifacts: ${{ env.PACKAGED_OUTPUTPATH }}/*
-          allow_updates: true
-          remove_artifacts: false
-          replaces_artifacts: true
-          make_latest: true
-          gh_token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            - These RTISTIC kernels can be used for `Armbian`, `OpenWrt` and `FnNAS`.
-            - These are dedicated BSP kernels for `Rockchip rk3528/rk3566/rk3568` and are not compatible with other series.
-
-            <br />
-
-            - 这些内核可用于 `Armbian`, `OpenWrt` 和 `FnNAS`。
-            - 这些是 `Rockchip rk3528/rk3566/rk3568` 专用 BSP 内核，和其他系列不通用。
-            - LB2004 dtb included
