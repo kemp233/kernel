@@ -11,7 +11,7 @@ diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchi
 
 diff --git a/arch/arm64/boot/dts/rockchip/rk3566-lb2004-bsp6.1.dts b/arch/arm64/boot/dts/rockchip/rk3566-lb2004-bsp6.1.dts
 new file mode 100755
-index 000000000..15e4fa205
+index 000000000..230853c2b
 --- /dev/null
 +++ b/arch/arm64/boot/dts/rockchip/rk3566-lb2004-bsp6.1.dts
 @@ -0,0 +1,669 @@
@@ -161,7 +161,7 @@ index 000000000..15e4fa205
 +	wireless_wlan: wireless-wlan {
 +		compatible = "wlan-platdata";
 +		rockchip,grf = <&grf>;
-+		wifi_chip_type = "ap6212";
++		wifi_chip_type = "rtl8822cs";
 +		sdio_vref = <1800>;
 +		WIFI,host_wake_irq = <&gpio3 RK_PA2 GPIO_ACTIVE_HIGH>;
 +		status = "okay";
