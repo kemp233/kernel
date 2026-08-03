@@ -229,3 +229,15 @@ jobs:
           name: rk3566-lb2004-dtb
           path: /tmp/lb2004-out/*
           if-no-files-found: ignore
+
+      - name: Upload kernel release (for amlogic-s9xxx-armbian build)
+        if: success()
+        uses: ophub/upload-to-releases@main
+        with:
+          tag: kernel_rk35xx
+          artifacts: /builder/compile-kernel/output/*
+          allow_updates: true
+          remove_artifacts: false
+          replaces_artifacts: true
+          make_latest: false
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
