@@ -202,9 +202,9 @@
 };
 
 &mdio1 {
-	rgmii_phy1: ethernet-phy@0 {
-		compatible = "ethernet-phy-id7b74.4411", "ethernet-phy-ieee802.3-c22";
-		reg = <0>;
+	rgmii_phy1: ethernet-phy@1 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <1>;
 	};
 };
 
@@ -541,12 +541,14 @@
 
 /* GPU */
 &gpu {
+	mali-supply = <&vdd_gpu>;
 	status = "okay";
 };
 
 /* NPU */
 &rknpu {
 	memory-region = <&rknpu_reserved>;
+	rknpu-supply = <&vdd_npu>;
 	status = "okay";
 };
 
@@ -561,7 +563,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pcie_reset_h>;
 	reset-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>;
-	status = "okay";
+	status = "disabled"; /* LB2004 has no PCIe physical interface (vendor dtb confirms) */
 };
 
 /* pcie30phy/pcie3x2 not available on rk3566, removed */
