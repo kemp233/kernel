@@ -209,13 +209,23 @@ jobs:
         shell: bash
         run: |
           echo "### 🎯 LB2004 编译结果" >> $GITHUB_STEP_SUMMARY
-          DTB=$(find /builder -type f -name "rk3566-lb2004.dtb" 2>/dev/null | head -1)
+          DTB=$(find /builder -type f -name "rk3566-lb2004*.dtb" 2>/dev/null | head -1)
           if [ -n "$DTB" ]; then
-            echo "✅ **LB2004 DTB 编译成功!**" >> $GITHUB_STEP_SUMMARY
-            ls -lh "$DTB" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **LB2004 DTB 编译成功!**" >> "$GITHUB_STEP_SUMMARY"
+            ls -lh "$DTB" >> "$GITHUB_STEP_SUMMARY"
+            mkdir -p /tmp/lb2004-out
+            cp "$DTB" /tmp/lb2004-out/
           else
-            echo "❌ **未找到 rk3566-lb2004.dtb**" >> $GITHUB_STEP_SUMMARY
-            echo "`text" >> $GITHUB_STEP_SUMMARY
-            find /builder -type f -name "*.dtb" 2>/dev/null | head -20 >> $GITHUB_STEP_SUMMARY || true
-            echo "`" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **未找到 rk3566-lb2004*.dtb**" >> "$GITHUB_STEP_SUMMARY"
+            echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"
+            find /builder -type f -name "*.dtb" 2>/dev/null | head -20 >> "$GITHUB_STEP_SUMMARY" || true
+            echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Upload LB2004 DTB artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk3566-lb2004-dtb
+          path: /tmp/lb2004-out/*
+          if-no-files-found: ignore
