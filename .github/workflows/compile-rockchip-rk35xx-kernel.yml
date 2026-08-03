@@ -241,3 +241,19 @@ jobs:
           replaces_artifacts: true
           make_latest: false
           gh_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add no-suffix kernel tarball (rebuild downloads ${kernel_var}.tar.gz)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/krel && cd /tmp/krel
+          # rebuild (amlogic-s9xxx-armbian) downloads <version>.tar.gz without -ophub suffix.
+          # ophub only produces <version>-ophub.tar.gz, so mirror it as the no-suffix name.
+          for f in $(gh release view kernel_rk35xx --repo kemp233/kernel --json assets -q '.assets[].name' | grep -- '-ophub.tar.gz$'); do
+            ver="${f%-ophub.tar.gz}"
+            gh release download kernel_rk35xx --repo kemp233/kernel -p "$f" -D /tmp/krel || continue
+            mv "$f" "$ver.tar.gz"
+            gh release upload kernel_rk35xx "/tmp/krel/$ver.tar.gz" --repo kemp233/kernel --clobber || true
+          done
+          gh release view kernel_rk35xx --repo kemp233/kernel --json assets -q '.assets[].name'
