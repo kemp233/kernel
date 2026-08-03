@@ -183,7 +183,7 @@
 
 /* GMAC1 Ethernet */
 &gmac1 {
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-id";
 	clock_in_out = "input";
 
 	assigned-clocks = <&cru SCLK_GMAC1_RX_TX>, <&cru SCLK_GMAC1>;
