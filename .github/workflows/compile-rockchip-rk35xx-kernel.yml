@@ -13,11 +13,11 @@ on:
       kernel_source:
         description: "Select the kernel source"
         required: false
-        default: "kemp233/linux-rockchip@rk-6.1-rkr5.1"
+        default: "unifreq/linux-6.1.y-rockchip@rk-6.1-rkr5.1-v20251113"
         type: choice
         options:
-          - kemp233/linux-rockchip@rk-6.1-rkr5.1
           - unifreq/linux-6.1.y-rockchip@rk-6.1-rkr5.1-v20251113
+          - kemp233/linux-rockchip@rk-6.1-rkr5.1
           - unifreq/linux-6.1.y-rockchip
           - unifreq/linux-5.10.y-rk35xx
           - ophub/linux-6.1.y-rockchip
