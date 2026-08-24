@@ -2,16 +2,6 @@ diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchi
 index 1111111..2222222 100644
 --- a/arch/arm64/boot/dts/rockchip/Makefile
 +++ b/arch/arm64/boot/dts/rockchip/Makefile
-@@ -187,6 +187,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3568-rmr6.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-pc.dtb
-+dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3568-z96a-laptop-v2.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3568-sige5.dtb
-
-diff --git a/arch/arm64/boot/dts/rockchip/rk3568-z96a-laptop-v2.dts b/arch/arm64/boot/dts/rockchip/rk3568-z96a-laptop-v2.dts
-new file mode 100644
-index 0000000..z96av2
---- /dev/null
-+++ b/arch/arm64/boot/dts/rockchip/rk3568-z96a-laptop-v2.dts
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2024 Rockchip Electronics Co., Ltd.
@@ -375,12 +365,12 @@ index 0000000..z96av2
 +			compatible = "arm,cortex-a55";
 +			reg = <0x00 0x00>;
 +			enable-method = "psci";
-+			clocks = <0x02 0x00>;
++			clocks = <0x23 0x00>;
 +			operating-points-v2 = <0x03>;
 +			cpu-idle-states = <0x04>;
 +			#cooling-cells = <0x02>;
 +			dynamic-power-coefficient = <0xbb>;
-+			cpu-supply = <0x05>;
++			cpu-supply = <0x75>;
 +			phandle = <0x0c>;
 +		};
 +
@@ -389,7 +379,7 @@ index 0000000..z96av2
 +			compatible = "arm,cortex-a55";
 +			reg = <0x00 0x100>;
 +			enable-method = "psci";
-+			clocks = <0x02 0x00>;
++			clocks = <0x23 0x00>;
 +			operating-points-v2 = <0x03>;
 +			cpu-idle-states = <0x04>;
 +			phandle = <0x0d>;
@@ -400,7 +390,7 @@ index 0000000..z96av2
 +			compatible = "arm,cortex-a55";
 +			reg = <0x00 0x200>;
 +			enable-method = "psci";
-+			clocks = <0x02 0x00>;
++			clocks = <0x23 0x00>;
 +			operating-points-v2 = <0x03>;
 +			cpu-idle-states = <0x04>;
 +			phandle = <0x0e>;
@@ -411,7 +401,7 @@ index 0000000..z96av2
 +			compatible = "arm,cortex-a55";
 +			reg = <0x00 0x300>;
 +			enable-method = "psci";
-+			clocks = <0x02 0x00>;
++			clocks = <0x23 0x00>;
 +			operating-points-v2 = <0x03>;
 +			cpu-idle-states = <0x04>;
 +			phandle = <0x0f>;
@@ -956,7 +946,7 @@ index 0000000..z96av2
 +			compatible = "snps,dwc3";
 +			reg = <0x00 0xfcc00000 0x00 0x400000>;
 +			interrupts = <0x00 0xa9 0x04>;
-+			dr_mode = "otg";
++			dr_mode = "host";
 +			phys = <0x28 0x24 0x04>;
 +			phy-names = "usb2-phy\0usb3-phy";
 +			phy_type = "utmi_wide";
@@ -975,7 +965,6 @@ index 0000000..z96av2
 +			snps,parkmode-disable-ss-quirk;
 +			quirk-skip-phy-init;
 +			status = "okay";
-+			usb-role-switch;
 +			phandle = <0x164>;
 +
 +			port {
@@ -1367,7 +1356,7 @@ index 0000000..z96av2
 +		sc8886@6b {
 +			compatible = "silergy,sc8886";
 +			reg = <0x6b>;
-+			status = "disabled";
++			status = "okay";
 +			phandle = <0x176>;
 +		};
 +
@@ -1376,6 +1365,7 @@ index 0000000..z96av2
 +			reg = <0x4e>;
 +			pinctrl-names = "default";
 +			pinctrl-0 = <0x3f>;
++			/* vcc5v0_usb (0x112): known-good VBUS rail on V2 */
 +			vbus-supply = <0x112>;
 +			interrupt-parent = <0x41>;
 +			interrupts = <0x1d 0x08>;
@@ -1427,24 +1417,6 @@ index 0000000..z96av2
 +			};
 +		};
 +
-+		syr837@40 {
-+			compatible = "silergy,syr827";
-+			reg = <0x40>;
-+			vin-supply = <0x44>;
-+			regulator-compatible = "fan53555-reg";
-+			regulator-name = "vdd_cpu";
-+			regulator-min-microvolt = <0xadf34>;
-+			regulator-max-microvolt = <0x1535b0>;
-+			regulator-ramp-delay = <0x8fc>;
-+			fcs,suspend-voltage-selector = <0x01>;
-+			regulator-always-on;
-+			regulator-initial-state = <0x03>;
-+			phandle = <0x05>;
-+
-+			regulator-state-mem {
-+				regulator-off-in-suspend;
-+			};
-+		};
 +
 +		pmic@20 {
 +			compatible = "rockchip,rk809";
@@ -1477,7 +1449,7 @@ index 0000000..z96av2
 +			phandle = <0x137>;
 +
 +			pwrkey {
-+				status = "disabled";
++				status = "okay";
 +			};
 +
 +			pinctrl_rk8xx {
@@ -1700,14 +1672,6 @@ index 0000000..z96av2
 +					regulator-name = "boost";
 +					phandle = <0x17f>;
 +
-+					/*
-+					 * RK809 internal boost converter: 3.3V (vcc3v3_sys) -> 5V
-+					 * Replaces external 12V->5V DC-DC on original board.
-+					 * All 5V rails (vcc5v0_sys, vcc5v0_usb, vcc5v0_host, vcc5v0_otg)
-+					 * now source from this boost. Max current ~1.5-2A.
-+					 * Requires stable vcc3v3_sys from onboard 12V->3.3V DC-DC.
-+					 */
-+
 +					regulator-state-mem {
 +						regulator-off-in-suspend;
 +					};
@@ -1716,13 +1680,6 @@ index 0000000..z96av2
 +				OTG_SWITCH {
 +					regulator-name = "otg_switch";
 +					phandle = <0x180>;
-+
-+					/*
-+					 * RK809 OTG switch controlled by HUSB311 GPIO (vcc5v0-otg-en).
-+					 * When HUSB311 negotiates PD role swap to source, it drives
-+					 * this switch to provide 5V on Type-C port (vcc5v0_otg).
-+					 * vin-supply comes from BOOST via vcc5v0_sys.
-+					 */
 +
 +					regulator-state-mem {
 +						regulator-off-in-suspend;
@@ -3292,7 +3249,7 @@ index 0000000..z96av2
 +		compatible = "rockchip,rk3568-dw-mshc\0rockchip,rk3288-dw-mshc";
 +		reg = <0x00 0xfe2c0000 0x00 0x4000>;
 +		interrupts = <0x00 0x63 0x04>;
-+		max-frequency = <0xbebc200>;
++		max-frequency = <0x5f5e100>;
 +		clocks = <0x23 0xb2 0x23 0xb3 0x23 0x18c 0x23 0x18d>;
 +		clock-names = "biu\0ciu\0ciu-drive\0ciu-sample";
 +		fifo-depth = <0x100>;
@@ -3310,7 +3267,7 @@ index 0000000..z96av2
 +		non-removable;
 +		pinctrl-names = "default";
 +		pinctrl-0 = <0xbd 0xbe 0xbf>;
-+		sd-uhs-sdr104;
++		sd-uhs-sdr50;
 +		phandle = <0x1b0>;
 +	};
 +
@@ -6860,7 +6817,7 @@ index 0000000..z96av2
 +		sdio-pwrseq {
 +
 +			wifi-enable-h {
-+				rockchip,pins = <0x00 0x10 0x00 0x116>;  // PC0 (GPIO0_C0) fixed from PC1 per Z96A V2 schematic
++				rockchip,pins = <0x00 0x11 0x00 0x116>;
 +				phandle = <0x138>;
 +			};
 +		};
@@ -7126,12 +7083,6 @@ index 0000000..z96av2
 +		phandle = <0x134>;
 +	};
 +
-+	/*
-+	 * vcc5v0_sys: 5V system rail sourced from RK809 BOOST (3.3V->5V).
-+	 * vin-supply = dc_12v (12V input) but actual power path is:
-+	 * dc_12v -> onboard 12V->3.3V DC-DC -> vcc3v3_sys -> RK809 BOOST -> 5V
-+	 * This replaces the external 12V->5V DC-DC from original design.
-+	 */
 +	vcc5v0-sys {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vcc5v0_sys";
@@ -7143,12 +7094,6 @@ index 0000000..z96av2
 +		phandle = <0x12f>;
 +	};
 +
-+	/*
-+	 * vcc5v0_usb: USB peripheral 5V supply (OTG/device mode).
-+	 * Controlled by RK809 GPIO0 (pinctrl-0 = vcc5v0-otg-pwr-en).
-+	 * Sources from vcc5v0_sys (RK809 BOOST output).
-+	 * Original design used external DC-DC + RK817 GPIO.
-+	 */
 +	vcc5v0-usb {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vcc5v0_usb";
@@ -7164,12 +7109,6 @@ index 0000000..z96av2
 +		phandle = <0x112>;
 +	};
 +
-+	/*
-+	 * vcc5v0_host: USB host 5V supply (Type-A ports).
-+	 * Controlled by RK809 GPIO1 (pinctrl-0 = vcc5v0-host-en).
-+	 * Sources from vcc5v0_sys (RK809 BOOST output).
-+	 * Powers keyboard/touchpad via GL852G hub.
-+	 */
 +	vcc5v0-host-regulator {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vcc5v0_host";
@@ -7185,16 +7124,11 @@ index 0000000..z96av2
 +		phandle = <0x114>;
 +	};
 +
-+	/*
-+	 * vcc5v0_otg: Type-C port 5V output (PD source mode).
-+	 * Controlled by HUSB311 GPIO29 (vcc5v0-otg-en pinctrl).
-+	 * When HUSB311 negotiates PD role swap to source, it enables
-+	 * RK809 OTG_SWITCH to provide 5V on Type-C VBUS.
-+	 * Sources from vcc5v0_sys (RK809 BOOST output).
-+	 */
 +	vcc5v0-otg-regulator {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vcc5v0_otg";
++		regulator-always-on;
++		regulator-boot-on;
 +		regulator-min-microvolt = <0x4c4b40>;
 +		regulator-max-microvolt = <0x4c4b40>;
 +		enable-active-high;
@@ -7206,12 +7140,6 @@ index 0000000..z96av2
 +	};
 +
 +
-+	/*
-+	 * z96a_keyboad_vcc: Keyboard/touchpad dedicated supply.
-+	 * GPIO1_D5 (gpio@41_15) active-high enable.
-+	 * Always-on at boot to power GL852G hub + keyboard/touchpad.
-+	 * Sources from vcc5v0_sys via load switch.
-+	 */
 +	z96a-keyboad-vcc {
 +		compatible = "regulator-fixed";
 +		gpio = <0x41 0x15 0x00>;
@@ -7224,11 +7152,6 @@ index 0000000..z96av2
 +		phandle = <0x31f>;
 +	};
 +
-+	/*
-+	 * z96a_camera_vcc: Camera module supply.
-+	 * Controlled by HUSB311 GPIO16 (z96a-camera-pwr pinctrl).
-+	 * Always-on at boot.
-+	 */
 +	z96a-camera-vcc {
 +		compatible = "regulator-fixed";
 +		gpio = <0x132 0x10 0x00>;
@@ -7274,7 +7197,7 @@ index 0000000..z96av2
 +		BT,reset_gpio = <0x41 0x11 0x00>;
 +		BT,wake_gpio = <0x41 0x0e 0x00>;
 +		BT,host_wake_irq = <0x41 0x14 0x00>;
-+		status = "okay";
++		status = "disabled";
 +		phandle = <0x322>;
 +	};
 +
@@ -7302,10 +7225,7 @@ index 0000000..z96av2
 +	edp-panel {
 +		compatible = "simple-panel";
 +		status = "okay";
-+		/* power-supply = <&vcc3v3_lcd0_n>;  // DISABLED: violent mux (pm_domains.c)
-+		 * forces GPIO0_C7 high to keep LCD 3.3V rail on.
-+		 * Original vcc3v3-lcd0-n regulator caused DRM/EDP panic at fbcon takeover.
-+		 */
++		// power-supply = <0x125>;  // disabled: violent mux handles LCD power
 +		backlight = <0x13d>;
 +		enable-gpios = <0x4c 0x03 0x00>;
 +		bus-format = <0x100a>;
@@ -7452,7 +7372,6 @@ index 0000000..z96av2
 +		usbc0_role_switch = "/i2c@fdd40000/husb311@4e/ports/port@0/endpoint@0";
 +		usb_con = "/i2c@fdd40000/husb311@4e/connector";
 +		usb_ss_con = "/i2c@fdd40000/husb311@4e/connector/ports/port@0/endpoint";
-+		vdd_cpu = "/i2c@fdd40000/syr837@40";
 +		rk809 = "/i2c@fdd40000/pmic@20";
 +		pinctrl_rk8xx = "/i2c@fdd40000/pmic@20/pinctrl_rk8xx";
 +		rk809_slppin_null = "/i2c@fdd40000/pmic@20/pinctrl_rk8xx/rk809_slppin_null";
